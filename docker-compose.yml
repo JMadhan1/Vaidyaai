@@ -1,0 +1,93 @@
+version: '3.9'
+
+services:
+  # ── Ollama — local Gemma 4 inference ─────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: vaidyaai-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── Model puller — downloads gemma3:4b on first run ──────────────────────────
+  model-puller:
+    image: ollama/ollama:latest
+    container_name: vaidyaai-model-puller
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Pulling Gemma 4 (gemma3:4b)..."
+        ollama pull gemma3:4b
+        echo "Creating custom VaidyaAI model..."
+        cat > /tmp/Modelfile << 'EOF'
+        FROM gemma3:4b
+        SYSTEM """You are VaidyaAI — India's offline AI medical triage system for rural communities. ASHA Kit: ORS, Zinc, Paracetamol, IFA, Albendazole, Vitamin A. Emergency: 108. Maternal: 102."""
+        PARAMETER temperature 0.3
+        PARAMETER num_ctx 8192
+        PARAMETER num_predict 1024
+        EOF
+        ollama create vaidyaai -f /tmp/Modelfile
+        echo "VaidyaAI model ready!"
+    restart: "no"
+
+  # ── Backend — FastAPI + LangChain ────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vaidyaai-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=gemma3:4b
+      - HOST=0.0.0.0
+      - PORT=8000
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Frontend — React Vite dev server ─────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vaidyaai-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+    driver: local
+
+networks:
+  default:
+    name: vaidyaai-network

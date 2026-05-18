@@ -1,0 +1,16 @@
+{
+  "name": "VaidyaAI — Healthcare for Every Village",
+  "short_name": "VaidyaAI",
+  "description": "Offline AI medical triage powered by Gemma 4. For rural India.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A0F1E",
+  "theme_color": "#10B981",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "monochrome" }
+  ],
+  "screenshots": [],
+  "categories": ["health", "medical", "utilities"]
+}

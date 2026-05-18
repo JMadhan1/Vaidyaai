@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0A0F1E" />
+  <meta name="description" content="VaidyaAI — Offline AI Medical Triage for Rural India. Powered by Gemma 4." />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="VaidyaAI" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <title>VaidyaAI — Healthcare for Every Village</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg:              #0A0F1E;
+      --surface:         #111827;
+      --card:            #1F2937;
+      --card-hover:      #243044;
+      --border:          #374151;
+      --border-subtle:   #1F2937;
+
+      --emerald:         #10B981;
+      --emerald-dark:    #059669;
+      --emerald-glow:    rgba(16, 185, 129, 0.15);
+
+      --emergency:       #EF4444;
+      --emergency-glow:  rgba(239, 68, 68, 0.15);
+      --clinic:          #F59E0B;
+      --clinic-glow:     rgba(245, 158, 11, 0.15);
+      --otc:             #10B981;
+      --monitor:         #3B82F6;
+      --asha-amber:      #F59E0B;
+
+      --text-primary:    #F9FAFB;
+      --text-secondary:  #9CA3AF;
+      --text-muted:      #6B7280;
+
+      --radius-sm:  8px;
+      --radius-md:  16px;
+      --radius-lg:  24px;
+      --radius-xl:  32px;
+      --radius-pill:50px;
+
+      --shadow:      0 4px 24px rgba(0, 0, 0, 0.4);
+      --shadow-glow: 0 0 32px rgba(16, 185, 129, 0.12);
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body, #root {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text-primary);
+      font-family: 'Nunito', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button  { font-family: inherit; cursor: pointer; border: none; outline: none; }
+    input, textarea { font-family: inherit; outline: none; }
+    a { text-decoration: none; }
+
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #4B5563; }
+
+    /* ── Animations ──────────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.7; transform: scale(0.94); }
+    }
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-7px); }
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+    @keyframes emergencyPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+      50%       { box-shadow: 0 0 0 14px rgba(239, 68, 68, 0); }
+    }
+    @keyframes shimmer {
+      0%   { background-position: -400px 0; }
+      100% { background-position: 400px 0; }
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    @keyframes glow {
+      0%, 100% { box-shadow: 0 0 20px rgba(16,185,129,0.2); }
+      50%       { box-shadow: 0 0 40px rgba(16,185,129,0.45); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
