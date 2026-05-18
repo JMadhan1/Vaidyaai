@@ -56,7 +56,7 @@ Every response is spoken aloud in the patient's language via browser TTS. **No i
 ## Demo
 
 > 🎥 **[Watch 3-minute demo — ADD YOUTUBE LINK]**  
-> 🚀 **[Live Demo — https://twister-password-confirm.ngrok-free.app](https://twister-password-confirm.ngrok-free.app)**
+> 🚀 **[Live Demo — https://twister-password-confirm.ngrok-free.dev](https://twister-password-confirm.ngrok-free.dev)**
 
 **Demo highlights:**
 - Hindi voice input → Gemma 4 streaming triage → Emergency 108 banner
