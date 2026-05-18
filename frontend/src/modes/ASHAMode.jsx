@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Camera, X, ChevronDown, ChevronUp, Share2, Plus, AlertTriangle, CheckCircle, Printer, Zap } from 'lucide-react'
 import { getASHALabels } from './ASHAPrompts'
 import { ASHASession } from './ASHASession'
-import { sendASHATriage, readRDTStrip, getImmunizationSchedule } from '../utils/api'
+import { sendASHATriage, readRDTStrip, getImmunizationSchedule, identifySnakebite, readVVM, getPregnancyPlan, getHealthBulletin } from '../utils/api'
 
 // ─── Pill button group ────────────────────────────────────────────────────────
 function PillGroup({ options, value, onChange, color = '#00D4AA' }) {
@@ -144,6 +144,616 @@ ${decision.red_flags_to_watch?.length ? `
   w.document.write(html)
   w.document.close()
   w.print()
+}
+
+// ─── Health Bulletin Component ────────────────────────────────────────────────
+function HealthBulletin({ language }) {
+  const [bulletin, setBulletin] = useState(null)
+  const [loading, setLoading]   = useState(false)
+  const [speaking, setSpeaking] = useState(false)
+
+  const fetchBulletin = async () => {
+    setLoading(true)
+    try {
+      const data = await getHealthBulletin(language)
+      setBulletin(data)
+    } catch {
+      /* non-critical */
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchBulletin() }, [language])
+
+  const speakBulletin = () => {
+    if (!bulletin || !window.speechSynthesis) return
+    window.speechSynthesis.cancel()
+    const SPEECH_CODES = { en: 'en-IN', te: 'te-IN', hi: 'hi-IN', ta: 'ta-IN' }
+    const text = `${bulletin.title}. ${bulletin.tips.join('. ')}. Did you know: ${bulletin.did_you_know}`
+    const utt = new SpeechSynthesisUtterance(text)
+    utt.lang = SPEECH_CODES[language] || 'en-IN'
+    utt.rate = 0.9
+    utt.onend = () => setSpeaking(false)
+    setSpeaking(true)
+    window.speechSynthesis.speak(utt)
+  }
+
+  if (!bulletin && !loading) return null
+
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(0,212,170,0.08), rgba(0,122,255,0.06))',
+      border: '1.5px solid rgba(0,212,170,0.2)',
+      borderRadius: '14px',
+      padding: '16px',
+      marginBottom: '16px',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+        <div style={{ color: '#00D4AA', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+          📻 Today's Health Bulletin
+        </div>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button
+            onClick={speakBulletin}
+            disabled={!bulletin || speaking}
+            style={{
+              padding: '4px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: '700',
+              border: '1px solid rgba(0,212,170,0.3)', background: speaking ? 'rgba(0,212,170,0.2)' : 'rgba(0,212,170,0.08)',
+              color: '#00D4AA', cursor: bulletin ? 'pointer' : 'default',
+              fontFamily: 'DM Sans, sans-serif',
+              animation: speaking ? 'pulse 1.5s ease infinite' : 'none',
+            }}
+          >
+            {speaking ? '🔊 Playing...' : '🔊 Play'}
+          </button>
+          <button
+            onClick={fetchBulletin}
+            disabled={loading}
+            style={{
+              padding: '4px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: '700',
+              border: '1px solid rgba(255,255,255,0.1)', background: 'transparent',
+              color: '#555577', cursor: loading ? 'default' : 'pointer',
+              fontFamily: 'DM Sans, sans-serif',
+            }}
+          >
+            ↻ Refresh
+          </button>
+        </div>
+      </div>
+
+      {loading && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#555577', fontSize: '12px', padding: '8px 0' }}>
+          <div style={{ width: '12px', height: '12px', borderRadius: '50%', border: '2px solid #00D4AA', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
+          Generating today's health tip with Gemma 4...
+        </div>
+      )}
+
+      {bulletin && (
+        <>
+          <div style={{ color: '#E8E8F8', fontSize: '15px', fontWeight: '700', lineHeight: 1.4, marginBottom: '12px' }}>
+            {bulletin.title}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+            {bulletin.tips.map((tip, i) => (
+              <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                <span style={{ color: '#00D4AA', fontSize: '14px', flexShrink: 0 }}>✓</span>
+                <span style={{ color: '#C0C0D8', fontSize: '13px', lineHeight: 1.55 }}>{tip}</span>
+              </div>
+            ))}
+          </div>
+          {bulletin.did_you_know && (
+            <div style={{
+              padding: '10px 12px', borderRadius: '8px',
+              background: 'rgba(0,122,255,0.08)', border: '1px solid rgba(0,122,255,0.15)',
+            }}>
+              <span style={{ color: '#60A5FA', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                💡 Did you know?{' '}
+              </span>
+              <span style={{ color: '#9999BB', fontSize: '12px', lineHeight: 1.5 }}>{bulletin.did_you_know}</span>
+            </div>
+          )}
+          <div style={{ color: '#444466', fontSize: '10px', marginTop: '8px' }}>
+            {bulletin.date} · Gemma 4 offline · {bulletin.inference_seconds}s
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── Snakebite Identifier Component ─────────────────────────────────────────
+function SnakebiteIdentifier({ language }) {
+  const [image, setImage]         = useState(null)
+  const [imagePreview, setPreview] = useState(null)
+  const [result, setResult]       = useState(null)
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState(null)
+  const fileRef                   = useRef()
+
+  const URGENCY_COLOR = { emergency: '#FF2D55', monitor: '#FF9500' }
+
+  const handleImage = (file) => {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setImage(e.target.result.split(',')[1])
+      setPreview(e.target.result)
+      setResult(null)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleIdentify = async () => {
+    if (!image) { setError('Please take a photo of the snake first.'); return }
+    setLoading(true); setError(null); setResult(null)
+    try {
+      const res = await identifySnakebite(image, language)
+      setResult(res)
+    } catch {
+      setError('Gemma 4 vision unavailable. Is Ollama running?')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{
+      background: '#0F0F28',
+      border: '1.5px solid rgba(255,149,0,0.2)',
+      borderRadius: '14px',
+      padding: '16px',
+      marginBottom: '16px',
+    }}>
+      <div style={{ color: '#FF9500', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '14px' }}>
+        🐍 Snakebite Identifier — Big 4
+      </div>
+
+      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '12px' }}>
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => handleImage(e.target.files[0])} />
+        {imagePreview ? (
+          <div style={{ position: 'relative' }}>
+            <img src={imagePreview} alt="snake" style={{ width: '80px', height: '60px', borderRadius: '8px', objectFit: 'cover', border: '2px solid rgba(255,149,0,0.5)' }} />
+            <button onClick={() => { setImage(null); setPreview(null); setResult(null) }}
+              style={{ position: 'absolute', top: '-6px', right: '-6px', width: '18px', height: '18px', borderRadius: '50%', background: '#FF2D55', border: 'none', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <X size={10} />
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => fileRef.current.click()} style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '10px 16px', borderRadius: '10px',
+            border: '1.5px dashed rgba(255,149,0,0.35)',
+            background: 'rgba(255,149,0,0.05)',
+            color: '#FF9500', fontSize: '13px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif',
+          }}>
+            <Camera size={16} /> Photo Snake
+          </button>
+        )}
+        <button onClick={handleIdentify} disabled={!image || loading} style={{
+          flex: 1, padding: '10px 14px', borderRadius: '10px', border: 'none',
+          background: !image || loading ? 'rgba(255,149,0,0.2)' : 'linear-gradient(135deg, #CC6A00, #FF9500)',
+          color: !image || loading ? '#FF9500' : '#0A0A1A',
+          fontWeight: '700', fontSize: '13px', cursor: image && !loading ? 'pointer' : 'default',
+          fontFamily: 'DM Sans, sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+        }}>
+          {loading ? (
+            <><div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid #FF9500', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />Identifying...</>
+          ) : '🐍 Identify Snake'}
+        </button>
+      </div>
+
+      {error && <div style={{ color: '#FF9500', fontSize: '12px', marginBottom: '8px' }}>{error}</div>}
+
+      {result && (
+        <div style={{
+          padding: '14px', borderRadius: '10px',
+          background: result.urgency === 'emergency' ? 'rgba(255,45,85,0.08)' : 'rgba(255,149,0,0.08)',
+          border: `1.5px solid ${result.urgency === 'emergency' ? 'rgba(255,45,85,0.3)' : 'rgba(255,149,0,0.3)'}`,
+        }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginBottom: '12px' }}>
+            <div>
+              <div style={{ color: URGENCY_COLOR[result.urgency] || '#FF9500', fontSize: '16px', fontWeight: '800' }}>
+                {result.identified_species}
+              </div>
+              <div style={{ color: '#9999BB', fontSize: '11px', marginTop: '2px' }}>
+                {result.venom_type} · AI confidence: {result.confidence} · {result.inference_seconds}s
+              </div>
+              {result.urgency === 'emergency' && (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  <a href="tel:108" style={{
+                    padding: '6px 14px', borderRadius: '8px', background: '#FF2D55',
+                    color: '#FFF', fontWeight: '700', fontSize: '12px', textDecoration: 'none', display: 'inline-block',
+                  }}>🚨 CALL 108</a>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {result.reasoning && (
+            <div style={{ color: '#9999BB', fontSize: '12px', lineHeight: 1.5, marginBottom: '12px', fontStyle: 'italic' }}>
+              {result.reasoning}
+            </div>
+          )}
+
+          {result.first_aid?.length > 0 && (
+            <div style={{ marginBottom: '10px' }}>
+              <div style={{ color: '#34C759', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                ✓ First Aid
+              </div>
+              {result.first_aid.map((step, i) => (
+                <div key={i} style={{ color: '#C0C0D8', fontSize: '12px', lineHeight: 1.6, display: 'flex', gap: '6px' }}>
+                  <span style={{ color: '#34C759', fontWeight: '700' }}>{i + 1}.</span>{step}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {result.do_not?.length > 0 && (
+            <div style={{
+              padding: '10px 12px', borderRadius: '8px',
+              background: 'rgba(255,45,85,0.08)', border: '1px solid rgba(255,45,85,0.2)',
+            }}>
+              <div style={{ color: '#FF2D55', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                ✗ Do NOT
+              </div>
+              {result.do_not.map((d, i) => (
+                <div key={i} style={{ color: '#FCA5A5', fontSize: '12px', lineHeight: 1.6 }}>• {d}</div>
+              ))}
+            </div>
+          )}
+
+          {result.antivenom_note && (
+            <div style={{ color: '#555577', fontSize: '11px', marginTop: '8px', lineHeight: 1.5 }}>
+              💉 {result.antivenom_note}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!result && !loading && (
+        <div style={{ color: '#444466', fontSize: '12px', fontStyle: 'italic' }}>
+          Photo a snake after a bite. Gemma 4 identifies Big 4 Indian species and gives WHO first aid.
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Vaccine Vial Monitor Reader ─────────────────────────────────────────────
+function VVMReader({ language }) {
+  const [image, setImage]         = useState(null)
+  const [imagePreview, setPreview] = useState(null)
+  const [result, setResult]       = useState(null)
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState(null)
+  const fileRef                   = useRef()
+
+  const handleImage = (file) => {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setImage(e.target.result.split(',')[1])
+      setPreview(e.target.result)
+      setResult(null)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleRead = async () => {
+    if (!image) { setError('Please take a photo of the vaccine vial VVM first.'); return }
+    setLoading(true); setError(null); setResult(null)
+    try {
+      const res = await readVVM(image, language)
+      setResult(res)
+    } catch {
+      setError('Gemma 4 vision unavailable. Is Ollama running?')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const usable = result?.usable === true
+  const resultColor = result ? (usable ? '#34C759' : '#FF2D55') : '#8E8E93'
+
+  return (
+    <div style={{
+      background: '#0F0F28',
+      border: '1.5px solid rgba(0,122,255,0.2)',
+      borderRadius: '14px',
+      padding: '16px',
+      marginBottom: '16px',
+    }}>
+      <div style={{ color: '#60A5FA', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '14px' }}>
+        💉 Vaccine Vial Monitor (VVM) Reader
+      </div>
+
+      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '12px' }}>
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => handleImage(e.target.files[0])} />
+        {imagePreview ? (
+          <div style={{ position: 'relative' }}>
+            <img src={imagePreview} alt="vvm" style={{ width: '80px', height: '60px', borderRadius: '8px', objectFit: 'cover', border: '2px solid rgba(0,122,255,0.5)' }} />
+            <button onClick={() => { setImage(null); setPreview(null); setResult(null) }}
+              style={{ position: 'absolute', top: '-6px', right: '-6px', width: '18px', height: '18px', borderRadius: '50%', background: '#FF2D55', border: 'none', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <X size={10} />
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => fileRef.current.click()} style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '10px 16px', borderRadius: '10px',
+            border: '1.5px dashed rgba(0,122,255,0.35)',
+            background: 'rgba(0,122,255,0.05)',
+            color: '#60A5FA', fontSize: '13px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif',
+          }}>
+            <Camera size={16} /> Photo Vaccine Label
+          </button>
+        )}
+        <button onClick={handleRead} disabled={!image || loading} style={{
+          flex: 1, padding: '10px 14px', borderRadius: '10px', border: 'none',
+          background: !image || loading ? 'rgba(0,122,255,0.2)' : 'linear-gradient(135deg, #0055CC, #007AFF)',
+          color: !image || loading ? '#60A5FA' : '#FFF',
+          fontWeight: '700', fontSize: '13px', cursor: image && !loading ? 'pointer' : 'default',
+          fontFamily: 'DM Sans, sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+        }}>
+          {loading ? (
+            <><div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid #007AFF', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />Reading VVM...</>
+          ) : '💉 Read VVM'}
+        </button>
+      </div>
+
+      {error && <div style={{ color: '#60A5FA', fontSize: '12px', marginBottom: '8px' }}>{error}</div>}
+
+      {result && (
+        <div style={{
+          padding: '14px', borderRadius: '10px',
+          background: `${resultColor}12`,
+          border: `1.5px solid ${resultColor}44`,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+            <span style={{ fontSize: '28px' }}>
+              {result.usable === true ? '✅' : result.usable === false ? '🚫' : '❓'}
+            </span>
+            <div>
+              <div style={{ color: resultColor, fontSize: '18px', fontWeight: '800' }}>
+                {result.usable === true ? 'SAFE TO USE' : result.usable === false ? 'DISCARD' : 'CANNOT READ'}
+                {result.vvm_stage ? ` — Stage ${result.vvm_stage}` : ''}
+              </div>
+              <div style={{ color: '#9999BB', fontSize: '11px' }}>
+                Inner square: {result.inner_square} · AI confidence: {result.confidence} · {result.inference_seconds}s
+              </div>
+            </div>
+          </div>
+          <div style={{
+            padding: '10px 12px', borderRadius: '8px',
+            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+            marginBottom: '8px',
+          }}>
+            <div style={{ color: resultColor, fontSize: '13px', fontWeight: '700', marginBottom: '4px' }}>
+              {result.action}
+            </div>
+          </div>
+          {result.reasoning && (
+            <div style={{ color: '#9999BB', fontSize: '12px', lineHeight: 1.5, fontStyle: 'italic', marginBottom: '6px' }}>
+              {result.reasoning}
+            </div>
+          )}
+          {result.cold_chain_note && (
+            <div style={{ color: '#555577', fontSize: '11px', lineHeight: 1.5 }}>
+              ❄️ {result.cold_chain_note}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!result && !loading && (
+        <div style={{ color: '#444466', fontSize: '12px', fontStyle: 'italic' }}>
+          Photo the VVM circle on a vaccine vial. Gemma 4 reads inner square vs outer circle darkness to check cold chain integrity.
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Pregnancy Tracker Component ─────────────────────────────────────────────
+function PregnancyTracker({ language }) {
+  const [lmpDate, setLmpDate]   = useState('')
+  const [age, setAge]           = useState('')
+  const [gravida, setGravida]   = useState(1)
+  const [para, setPara]         = useState(0)
+  const [result, setResult]     = useState(null)
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState(null)
+  const [expanded, setExpanded] = useState(true)
+
+  const handleTrack = async () => {
+    if (!lmpDate) { setError('Please enter the last menstrual period date.'); return }
+    setLoading(true); setError(null); setResult(null)
+    try {
+      const res = await getPregnancyPlan(lmpDate, age, gravida, para, language)
+      setResult(res)
+    } catch {
+      setError('Failed to generate pregnancy plan. Is Ollama running?')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const inputStyle = {
+    background: '#12122A', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: '10px',
+    padding: '8px 12px', color: '#E8E8F8', fontSize: '13px', fontFamily: 'DM Sans, sans-serif',
+    outline: 'none', boxSizing: 'border-box',
+  }
+
+  return (
+    <div style={{
+      background: '#0F0F28', border: '1.5px solid rgba(255,45,85,0.2)',
+      borderRadius: '14px', padding: '16px', marginBottom: '16px',
+    }}>
+      <button
+        onClick={() => setExpanded(e => !e)}
+        style={{
+          width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 0,
+        }}
+      >
+        <div style={{ color: '#FDA4AF', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+          🤰 Pregnancy Tracker (JSSK)
+        </div>
+        {expanded ? <ChevronUp size={14} color="#9999BB" /> : <ChevronDown size={14} color="#9999BB" />}
+      </button>
+
+      {expanded && (
+        <div style={{ marginTop: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+            <div>
+              <div style={{ color: '#9999BB', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px', fontWeight: '600' }}>Last Period (LMP)</div>
+              <input
+                type="date"
+                value={lmpDate}
+                onChange={e => setLmpDate(e.target.value)}
+                style={{ ...inputStyle, width: '100%' }}
+              />
+            </div>
+            <div>
+              <div style={{ color: '#9999BB', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px', fontWeight: '600' }}>Mother's Age</div>
+              <input
+                type="number"
+                min="12"
+                max="60"
+                placeholder="e.g. 24"
+                value={age}
+                onChange={e => setAge(e.target.value)}
+                style={{ ...inputStyle, width: '100%' }}
+              />
+            </div>
+            <div>
+              <div style={{ color: '#9999BB', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px', fontWeight: '600' }}>Gravida (total pregnancies)</div>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={gravida}
+                onChange={e => setGravida(parseInt(e.target.value) || 1)}
+                style={{ ...inputStyle, width: '100%' }}
+              />
+            </div>
+            <div>
+              <div style={{ color: '#9999BB', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px', fontWeight: '600' }}>Para (previous deliveries)</div>
+              <input
+                type="number"
+                min="0"
+                max="20"
+                value={para}
+                onChange={e => setPara(parseInt(e.target.value) || 0)}
+                style={{ ...inputStyle, width: '100%' }}
+              />
+            </div>
+          </div>
+
+          {error && <div style={{ color: '#FDA4AF', fontSize: '12px', marginBottom: '10px' }}>{error}</div>}
+
+          <button onClick={handleTrack} disabled={loading} style={{
+            width: '100%', padding: '12px', borderRadius: '10px', border: 'none',
+            background: loading ? 'rgba(255,45,85,0.2)' : 'linear-gradient(135deg, #CC0044, #FF2D55)',
+            color: loading ? '#FDA4AF' : '#FFF',
+            fontWeight: '700', fontSize: '13px', cursor: loading ? 'default' : 'pointer',
+            fontFamily: 'DM Sans, sans-serif', marginBottom: '12px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+          }}>
+            {loading ? (
+              <><div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid #FF2D55', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />Calculating...</>
+            ) : '🤰 Generate ANC Plan'}
+          </button>
+
+          {result && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* Gestational summary */}
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                {result.weeks_pregnant !== null && result.weeks_pregnant !== undefined && (
+                  <span style={{ padding: '6px 12px', borderRadius: '100px', background: 'rgba(255,45,85,0.12)', border: '1px solid rgba(255,45,85,0.3)', color: '#FDA4AF', fontSize: '12px', fontWeight: '700' }}>
+                    {result.weeks_pregnant} weeks pregnant
+                  </span>
+                )}
+                {result.trimester && (
+                  <span style={{ padding: '6px 12px', borderRadius: '100px', background: 'rgba(255,149,0,0.1)', border: '1px solid rgba(255,149,0,0.25)', color: '#FF9500', fontSize: '12px', fontWeight: '600' }}>
+                    {result.trimester}
+                  </span>
+                )}
+                {result.edd && (
+                  <span style={{ padding: '6px 12px', borderRadius: '100px', background: 'rgba(52,199,89,0.1)', border: '1px solid rgba(52,199,89,0.25)', color: '#34C759', fontSize: '12px', fontWeight: '600' }}>
+                    EDD: {result.edd}
+                  </span>
+                )}
+              </div>
+
+              {/* IFA schedule */}
+              {result.ifa_schedule && (
+                <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div style={{ color: '#FF9500', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>💊 IFA Tablets</div>
+                  <div style={{ color: '#E8E8F8', fontSize: '13px', fontWeight: '600', marginBottom: '4px' }}>{result.ifa_schedule.dose} — {result.ifa_schedule.frequency}</div>
+                  <div style={{ color: '#9999BB', fontSize: '12px', lineHeight: 1.5 }}>{result.ifa_schedule.tip}</div>
+                </div>
+              )}
+
+              {/* ANC visits overdue */}
+              {result.anc_overdue?.length > 0 && (
+                <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,149,0,0.06)', border: '1px solid rgba(255,149,0,0.2)' }}>
+                  <div style={{ color: '#FF9500', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>⚠ ANC Visits — Recent</div>
+                  {result.anc_overdue.map((v, i) => (
+                    <div key={i} style={{ marginBottom: '8px' }}>
+                      <div style={{ color: '#E8C070', fontSize: '13px', fontWeight: '600' }}>{v.visit} — {v.timing}</div>
+                      {v.key_tasks?.slice(0, 3).map((t, j) => (
+                        <div key={j} style={{ color: '#9999BB', fontSize: '12px', lineHeight: 1.6 }}>• {t}</div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ANC visits upcoming */}
+              {result.anc_upcoming?.length > 0 && (
+                <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(52,199,89,0.06)', border: '1px solid rgba(52,199,89,0.2)' }}>
+                  <div style={{ color: '#34C759', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>✓ Next ANC Visits</div>
+                  {result.anc_upcoming.map((v, i) => (
+                    <div key={i} style={{ marginBottom: '8px' }}>
+                      <div style={{ color: '#6EE7B7', fontSize: '13px', fontWeight: '600' }}>{v.visit} — {v.timing}</div>
+                      {v.key_tasks?.slice(0, 2).map((t, j) => (
+                        <div key={j} style={{ color: '#9999BB', fontSize: '12px', lineHeight: 1.6 }}>• {t}</div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Warning signs */}
+              {result.warning_signs?.length > 0 && (
+                <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,45,85,0.06)', border: '1px solid rgba(255,45,85,0.2)' }}>
+                  <div style={{ color: '#FF2D55', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>🚨 Warning Signs</div>
+                  {result.warning_signs.slice(0, 5).map((s, i) => (
+                    <div key={i} style={{ color: '#FCA5A5', fontSize: '12px', lineHeight: 1.6 }}>• {s}</div>
+                  ))}
+                </div>
+              )}
+
+              {/* JSSK entitlements */}
+              {result.jssk_entitlements?.length > 0 && (
+                <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(0,122,255,0.06)', border: '1px solid rgba(0,122,255,0.2)' }}>
+                  <div style={{ color: '#60A5FA', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>🏥 JSSK Free Entitlements</div>
+                  {result.jssk_entitlements.slice(0, 5).map((e, i) => (
+                    <div key={i} style={{ color: '#93C5FD', fontSize: '12px', lineHeight: 1.6 }}>✓ {e}</div>
+                  ))}
+                  <div style={{ color: '#60A5FA', fontSize: '12px', marginTop: '8px', fontWeight: '600' }}>
+                    📱 Call 102 for free ambulance to PHC/Hospital
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ─── RDT Strip Reader Component ───────────────────────────────────────────────
@@ -709,6 +1319,7 @@ export default function ASHAMode({ language, onEmergency }) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
   const [showLog, setShowLog] = useState(false)
+  const [activeTab, setActiveTab] = useState('triage')
   const [pmjay, setPmjay] = useState(false)
   const [immunizationData, setImmunizationData] = useState(null)
   const imageInputRef = useRef()
@@ -949,7 +1560,41 @@ export default function ASHAMode({ language, onEmergency }) {
         </div>
       </div>
 
-      {/* Main form */}
+      {/* ── Tab bar ── */}
+      <div style={{
+        display: 'flex', gap: '6px', padding: '10px 16px',
+        background: '#0D0D22',
+        borderBottom: '1px solid rgba(255,149,0,0.15)',
+        overflowX: 'auto', scrollbarWidth: 'none',
+      }}>
+        {[
+          { id: 'triage',    icon: '🧑', label: 'Triage'    },
+          { id: 'rdt',       icon: '🔬', label: 'RDT Test'  },
+          { id: 'snakebite', icon: '🐍', label: 'Snakebite' },
+          { id: 'vvm',       icon: '💉', label: 'Vaccine'   },
+          { id: 'pregnancy', icon: '🤰', label: 'Pregnancy' },
+          { id: 'bulletin',  icon: '📻', label: 'Bulletin'  },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              padding: '8px 16px', borderRadius: '100px', flexShrink: 0,
+              border: `1.5px solid ${activeTab === tab.id ? '#FF9500' : 'rgba(255,255,255,0.1)'}`,
+              background: activeTab === tab.id ? 'rgba(255,149,0,0.18)' : 'transparent',
+              color: activeTab === tab.id ? '#FF9500' : '#666688',
+              fontSize: '13px', fontWeight: '700', cursor: 'pointer',
+              whiteSpace: 'nowrap', transition: 'all 0.18s ease',
+              fontFamily: 'DM Sans, sans-serif',
+            }}
+          >
+            {tab.icon} {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Triage Tab ── */}
+      {activeTab === 'triage' && (
       <div style={{ padding: '20px', maxWidth: '640px', margin: '0 auto' }}>
 
         {/* Patient details section */}
@@ -1287,9 +1932,6 @@ export default function ASHAMode({ language, onEmergency }) {
           </div>
         </div>
 
-        {/* RDT Strip Reader — Gemma 4 multimodal */}
-        <RDTReader language={language} />
-
         {/* Error */}
         {error && (
           <div style={{
@@ -1481,6 +2123,42 @@ export default function ASHAMode({ language, onEmergency }) {
           </div>
         )}
       </div>
+      )}
+
+      {/* ── RDT Test Tab ── */}
+      {activeTab === 'rdt' && (
+        <div style={{ padding: '20px', maxWidth: '640px', margin: '0 auto' }}>
+          <RDTReader language={language} />
+        </div>
+      )}
+
+      {/* ── Snakebite Tab ── */}
+      {activeTab === 'snakebite' && (
+        <div style={{ padding: '20px', maxWidth: '640px', margin: '0 auto' }}>
+          <SnakebiteIdentifier language={language} />
+        </div>
+      )}
+
+      {/* ── Vaccine / VVM Tab ── */}
+      {activeTab === 'vvm' && (
+        <div style={{ padding: '20px', maxWidth: '640px', margin: '0 auto' }}>
+          <VVMReader language={language} />
+        </div>
+      )}
+
+      {/* ── Pregnancy Tab ── */}
+      {activeTab === 'pregnancy' && (
+        <div style={{ padding: '20px', maxWidth: '640px', margin: '0 auto' }}>
+          <PregnancyTracker language={language} />
+        </div>
+      )}
+
+      {/* ── Bulletin Tab ── */}
+      {activeTab === 'bulletin' && (
+        <div style={{ padding: '20px', maxWidth: '640px', margin: '0 auto' }}>
+          <HealthBulletin language={language} />
+        </div>
+      )}
     </div>
   )
 }

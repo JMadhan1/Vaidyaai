@@ -1,16 +1,19 @@
 import React, { useState } from 'react'
+import LandingPage from './pages/LandingPage'
 import OnboardingScreen from './components/OnboardingScreen'
 import ChatInterface from './components/ChatInterface'
 import StatusIndicator from './components/StatusIndicator'
 import EmergencyBanner from './components/EmergencyBanner'
 import ASHAMode from './modes/ASHAMode'
+import TranslatorMode from './modes/TranslatorMode'
 import { LANGUAGES } from './utils/languages'
 import { getLanguage } from './utils/languages'
 
 export default function App() {
+  const [screen, setScreen] = useState('landing')        // 'landing' | 'onboarding' | 'app'
   const [showOnboarding, setShowOnboarding] = useState(true)
   const [selectedLanguage, setSelectedLanguage] = useState('en')
-  const [mode, setMode] = useState('patient')            // 'patient' | 'asha'
+  const [mode, setMode] = useState('patient')            // 'patient' | 'asha' | 'translator'
   const [triageResult, setTriageResult] = useState(null)
   const [ashaEmergency, setAshaEmergency] = useState(false)
 
@@ -18,6 +21,11 @@ export default function App() {
     setSelectedLanguage(lang)
     setMode(selectedMode)
     setShowOnboarding(false)
+    setScreen('app')
+  }
+
+  if (screen === 'landing') {
+    return <LandingPage onEnterApp={() => setScreen('onboarding')} />
   }
 
   const handleLanguageChange = (lang) => {
@@ -25,13 +33,14 @@ export default function App() {
     setTriageResult(null)
   }
 
-  if (showOnboarding) {
+  if (showOnboarding || screen === 'onboarding') {
     return <OnboardingScreen onStart={handleStart} />
   }
 
   // ── Shared header pieces ─────────────────────────────────────────────────
   const isASHA = mode === 'asha'
-  const accentColor = isASHA ? 'var(--asha-amber)' : 'var(--emerald)'
+  const isTranslator = mode === 'translator'
+  const accentColor = isASHA ? 'var(--asha-amber)' : isTranslator ? '#007AFF' : 'var(--emerald)'
 
   const Header = () => (
     <header style={{
@@ -41,7 +50,7 @@ export default function App() {
       padding: '11px 16px',
       background: 'rgba(10,15,30,0.97)',
       backdropFilter: 'blur(20px)',
-      borderBottom: `1px solid ${isASHA ? 'rgba(245,158,11,0.18)' : 'var(--border-subtle)'}`,
+      borderBottom: `1px solid ${isASHA ? 'rgba(245,158,11,0.18)' : isTranslator ? 'rgba(0,122,255,0.18)' : 'var(--border-subtle)'}`,
       flexShrink: 0,
       gap: '10px',
       flexWrap: 'wrap',
@@ -75,12 +84,12 @@ export default function App() {
           </div>
           <div style={{
             fontSize: '11px',
-            color: isASHA ? 'var(--asha-amber)' : 'var(--text-muted)',
+            color: isASHA ? 'var(--asha-amber)' : isTranslator ? '#007AFF' : 'var(--text-muted)',
             fontWeight: '700',
             lineHeight: 1,
             marginTop: '2px',
           }}>
-            {isASHA ? 'ASHA Worker Mode' : 'Healthcare for Every Village'}
+            {isASHA ? 'ASHA Worker Mode' : isTranslator ? 'Medical Translator Mode' : 'Healthcare for Every Village'}
           </div>
         </div>
       </div>
@@ -133,6 +142,18 @@ export default function App() {
       </div>
     </header>
   )
+
+  // ── Translator Mode ──────────────────────────────────────────────────────
+  if (isTranslator) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
+        <Header />
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          <TranslatorMode language={selectedLanguage} />
+        </div>
+      </div>
+    )
+  }
 
   // ── ASHA Worker Mode ─────────────────────────────────────────────────────
   if (isASHA) {

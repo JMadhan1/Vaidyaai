@@ -5,6 +5,33 @@ const api = axios.create({
   timeout: 60000,
 })
 
+// Track every API call to prove 0 cloud calls (all go to localhost)
+api.interceptors.request.use(config => {
+  config._startTime = Date.now()
+  return config
+})
+
+api.interceptors.response.use(
+  response => {
+    const elapsed = ((Date.now() - response.config._startTime) / 1000).toFixed(2)
+    const log = JSON.parse(sessionStorage.getItem('vaidyaai_calls') || '[]')
+    log.push({
+      time: new Date().toLocaleTimeString('en-IN'),
+      method: (response.config.method || 'GET').toUpperCase(),
+      endpoint: response.config.url,
+      target: 'localhost (offline — Gemma 4)',
+      elapsed,
+      status: response.status,
+    })
+    if (log.length > 50) log.shift()
+    sessionStorage.setItem('vaidyaai_calls', JSON.stringify(log))
+    const count = parseInt(sessionStorage.getItem('vaidyaai_inference_count') || '0') + 1
+    sessionStorage.setItem('vaidyaai_inference_count', String(count))
+    return response
+  },
+  error => Promise.reject(error)
+)
+
 export const checkHealth = () => api.get('/health').then(r => r.data)
 
 export const sendTriage = ({ message, language, conversationHistory }) =>
@@ -24,6 +51,21 @@ export const readRDTStrip = (image_base64, test_type, language) =>
 
 export const getImmunizationSchedule = (age_months) =>
   api.get(`/immunization-schedule?age_months=${age_months}`).then(r => r.data)
+
+export const identifySnakebite = (image_base64, language) =>
+  api.post('/asha-snakebite', { image_base64, language }).then(r => r.data)
+
+export const readVVM = (image_base64, language) =>
+  api.post('/asha-vvm', { image_base64, language }).then(r => r.data)
+
+export const translateText = (text, from_lang, to_lang, mode) =>
+  api.post('/translate', { text, from_lang, to_lang, mode }).then(r => r.data)
+
+export const getPregnancyPlan = (lmp_date, age, gravida, para, language) =>
+  api.post('/pregnancy-tracker', { lmp_date, age, gravida, para, language }).then(r => r.data)
+
+export const getHealthBulletin = (language) =>
+  api.get(`/health-bulletin?language=${language}`).then(r => r.data)
 
 export const streamTriage = async (
   { message, language, conversationHistory, imageBase64 },

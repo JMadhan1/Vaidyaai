@@ -21,6 +21,12 @@ const MODE_LABELS = {
     hi: { title: 'आशा कार्यकर्ता', sub: 'गाँव दौरा मोड' },
     ta: { title: 'ஆஷா பணியாளர்', sub: 'கிராம வருகை முறை' },
   },
+  translator: {
+    en: { title: 'Translator',  sub: 'Doctor ↔ Patient bridge' },
+    te: { title: 'అనువాదం',     sub: 'డాక్టర్ ↔ రోగి' },
+    hi: { title: 'अनुवाद',     sub: 'डॉक्टर ↔ मरीज़' },
+    ta: { title: 'மொழிபெயர்',  sub: 'மருத்துவர் ↔ நோயாளி' },
+  },
 }
 
 const CTA_TEXT = {
@@ -41,8 +47,9 @@ export default function OnboardingScreen({ onStart }) {
   }, [])
 
   const modes = [
-    { id: 'patient', icon: '🧑', color: 'var(--emerald)', rgb: '16,185,129' },
-    { id: 'asha',    icon: '👩‍⚕️', color: 'var(--clinic)',  rgb: '245,158,11' },
+    { id: 'patient',    icon: '🧑',   color: 'var(--emerald)', rgb: '16,185,129' },
+    { id: 'asha',       icon: '👩‍⚕️',  color: 'var(--clinic)',  rgb: '245,158,11' },
+    { id: 'translator', icon: '🌐',   color: '#007AFF',        rgb: '0,122,255'  },
   ]
 
   return (
@@ -189,7 +196,7 @@ export default function OnboardingScreen({ onStart }) {
         }}>
           Who are you?
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
           {modes.map(m => {
             const active = mode === m.id
             const labels = MODE_LABELS[m.id][language] || MODE_LABELS[m.id].en
@@ -198,8 +205,8 @@ export default function OnboardingScreen({ onStart }) {
                 key={m.id}
                 onClick={() => setMode(m.id)}
                 style={{
-                  padding: '20px 14px',
-                  borderRadius: '20px',
+                  padding: '16px 8px',
+                  borderRadius: '16px',
                   border: `2px solid ${active ? m.color : 'var(--border-subtle)'}`,
                   background: active
                     ? `rgba(${m.rgb}, 0.10)`
@@ -210,23 +217,23 @@ export default function OnboardingScreen({ onStart }) {
                   boxShadow: active
                     ? `0 0 28px rgba(${m.rgb}, 0.18)`
                     : 'none',
-                  minHeight: '120px',
+                  minHeight: '110px',
                 }}
               >
-                <div style={{ fontSize: '34px', marginBottom: '10px', lineHeight: 1 }}>
+                <div style={{ fontSize: '28px', marginBottom: '8px', lineHeight: 1 }}>
                   {m.icon}
                 </div>
                 <div style={{
                   fontWeight: '800',
-                  fontSize: '15px',
+                  fontSize: '13px',
                   color: active ? m.color : 'var(--text-primary)',
-                  marginBottom: '5px',
+                  marginBottom: '4px',
                   lineHeight: 1.2,
                 }}>
                   {labels.title}
                 </div>
                 <div style={{
-                  fontSize: '12px',
+                  fontSize: '11px',
                   color: 'var(--text-muted)',
                   fontWeight: '600',
                   lineHeight: 1.4,
@@ -238,21 +245,25 @@ export default function OnboardingScreen({ onStart }) {
           })}
         </div>
 
-        {/* ASHA mode info pill */}
+        {/* Mode info pills */}
         {mode === 'asha' && (
           <div style={{
-            marginTop: '12px',
-            padding: '12px 16px',
-            borderRadius: 'var(--radius-md)',
-            background: 'rgba(245,158,11,0.07)',
-            border: '1px solid rgba(245,158,11,0.2)',
-            color: '#D97706',
-            fontSize: '13px',
-            lineHeight: 1.6,
-            fontWeight: '600',
+            marginTop: '12px', padding: '12px 16px', borderRadius: 'var(--radius-md)',
+            background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)',
+            color: '#D97706', fontSize: '13px', lineHeight: 1.6, fontWeight: '600',
             animation: 'slideDown 0.3s ease',
           }}>
-            🏥 Rapid structured patient assessment · Kit medicines · PHC referral · WhatsApp field report
+            🏥 Vitals · RDT strips · Snakebite ID · VVM check · PHC referral · Outbreak alert
+          </div>
+        )}
+        {mode === 'translator' && (
+          <div style={{
+            marginTop: '12px', padding: '12px 16px', borderRadius: 'var(--radius-md)',
+            background: 'rgba(0,122,255,0.07)', border: '1px solid rgba(0,122,255,0.2)',
+            color: '#60A5FA', fontSize: '13px', lineHeight: 1.6, fontWeight: '600',
+            animation: 'slideDown 0.3s ease',
+          }}>
+            🌐 Doctor speaks English → Patient hears Telugu/Hindi/Tamil · Patient speaks local language → Doctor understands
           </div>
         )}
       </div>

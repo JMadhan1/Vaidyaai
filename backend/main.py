@@ -52,8 +52,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -587,6 +587,488 @@ def immunization_schedule(age_months: int):
         "upcoming": upcoming,
         "source": "India Universal Immunization Programme (UIP) / NHM",
     }
+
+
+@app.post("/asha-snakebite")
+async def asha_snakebite(request: dict):
+    """
+    Gemma 4 multimodal snakebite identifier.
+    Identifies India's Big 4 venomous snakes from a photo and gives WHO-aligned first aid.
+    """
+    import time as _time, os, httpx as _httpx, json as _json, re as _re
+    t0 = _time.monotonic()
+
+    image_base64 = request.get("image_base64")
+    language     = request.get("language", "en")
+
+    if not image_base64:
+        raise HTTPException(status_code=400, detail="image_base64 is required")
+
+    LANG_INSTR = {
+        "en": "Respond in English.",
+        "te": "తెలుగులో సమాధానం ఇవ్వండి.",
+        "hi": "हिंदी में जवाब दें।",
+        "ta": "தமிழில் பதிலளியுங்கள்.",
+    }
+
+    prompt = f"""You are an expert herpetologist and emergency medicine physician reviewing a photo submitted by an ASHA worker after a reported snakebite in rural India.
+
+INDIA'S BIG 4 VENOMOUS SNAKES:
+1. Spectacled Cobra (Naja naja) — hood with spectacle marking, neurotoxic venom
+2. Common Krait (Bungarus caeruleus) — black/dark with white bands, potently neurotoxic, nocturnal
+3. Russell's Viper (Daboia russelii) — brown with dark oval chain pattern, hemotoxic + cytotoxic
+4. Saw-Scaled Viper (Echis carinatus) — small, pear-shaped head, rough zigzag scales, hemotoxic
+
+ASSESSMENT TASK:
+1. Identify the snake species if visible (or classify as unknown/non-venomous)
+2. Assess venom type: neurotoxic / hemotoxic / cytotoxic / unknown / non-venomous
+3. State urgency: emergency / monitor
+
+Respond ONLY with valid JSON:
+{{
+  "identified_species": "Species name or 'Unknown' or 'Non-venomous/unclear'",
+  "confidence": "high|medium|low",
+  "venom_type": "neurotoxic|hemotoxic|cytotoxic|unknown|non-venomous",
+  "urgency": "emergency|monitor",
+  "first_aid": ["Step 1", "Step 2", "Step 3"],
+  "do_not": ["Do not do X", "Do not do Y"],
+  "antivenom_note": "Brief note about polyvalent antivenom availability",
+  "reasoning": "1-2 sentences on identifying features you observed"
+}}
+
+CRITICAL FIRST AID RULES (always include):
+- Immobilize the bitten limb below heart level
+- Remove rings/tight clothing from the affected area
+- Do NOT cut, suck, tourniquet, or apply ice
+- Call 108 and transport to government hospital with antivenom stock
+- Polyvalent antivenom covers all Big 4 — available free at government hospitals
+
+{LANG_INSTR.get(language, LANG_INSTR["en"])}
+Do not add any text outside the JSON object."""
+
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    model    = os.getenv("OLLAMA_MODEL", "gemma3:4b")
+
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "images": [image_base64],
+        "stream": False,
+        "options": {"temperature": 0.05, "num_predict": 500},
+    }
+
+    try:
+        async with _httpx.AsyncClient(timeout=45.0) as client:
+            r = await client.post(f"{base_url}/api/generate", json=payload)
+            r.raise_for_status()
+            raw = r.json().get("response", "").strip()
+
+        json_match = _re.search(r'\{.*\}', raw, _re.DOTALL)
+        if json_match:
+            parsed = _json.loads(json_match.group())
+        else:
+            parsed = {
+                "identified_species": "Unknown",
+                "confidence": "low",
+                "venom_type": "unknown",
+                "urgency": "emergency",
+                "first_aid": [
+                    "Immobilize the bitten limb below heart level",
+                    "Remove rings and tight clothing",
+                    "Call 108 immediately and go to government hospital",
+                ],
+                "do_not": [
+                    "Do NOT cut or suck the wound",
+                    "Do NOT apply tourniquet or ice",
+                    "Do NOT give aspirin or alcohol",
+                ],
+                "antivenom_note": "Polyvalent antivenom covers Big 4 — available free at government hospitals",
+                "reasoning": raw[:200] if raw else "Could not analyze image.",
+            }
+
+        parsed["inference_seconds"] = round(_time.monotonic() - t0, 2)
+        return parsed
+
+    except Exception as exc:
+        logger.error(f"Snakebite identifier error: {exc}")
+        raise HTTPException(status_code=503, detail="Gemma 4 vision unavailable. Ensure Ollama is running.")
+
+
+@app.post("/asha-vvm")
+async def asha_vvm_reader(request: dict):
+    """
+    Gemma 4 multimodal Vaccine Vial Monitor (VVM) reader.
+    VVM is a WHO heat-damage indicator: inner square vs outer circle relative darkness.
+    """
+    import time as _time, os, httpx as _httpx, json as _json, re as _re
+    t0 = _time.monotonic()
+
+    image_base64 = request.get("image_base64")
+    language     = request.get("language", "en")
+
+    if not image_base64:
+        raise HTTPException(status_code=400, detail="image_base64 is required")
+
+    LANG_INSTR = {
+        "en": "Respond in English.",
+        "te": "తెలుగులో సమాధానం ఇవ్వండి.",
+        "hi": "हिंदी में जवाब दें।",
+        "ta": "தமிழில் பதிலளியுங்கள்.",
+    }
+
+    prompt = f"""You are a WHO-trained cold chain officer reviewing a photo of a vaccine vial label with a Vaccine Vial Monitor (VVM) submitted by an ASHA worker in rural India.
+
+VVM READING GUIDE:
+The VVM is a small circle on the vaccine label. Inside it is a smaller square (inner square).
+- STAGE 1 (USABLE): Inner square is LIGHTER than outer circle → Vaccine is safe to use
+- STAGE 2 (USABLE): Inner square color matches outer circle → Use immediately, end of life
+- STAGE 3 (DISCARD): Inner square is DARKER than outer circle → Discard, heat damaged
+- STAGE 4 (DISCARD): Inner square is much darker, almost black → Discard immediately
+
+TASK:
+1. Locate the VVM circle on the vaccine vial label
+2. Compare inner square vs outer circle darkness
+3. Classify into Stage 1, 2, 3, or 4
+4. State whether vaccine should be used or discarded
+
+Respond ONLY with valid JSON:
+{{
+  "vvm_stage": 1,
+  "usable": true,
+  "inner_square": "lighter|same|darker|much_darker",
+  "action": "USE — vaccine is safe" or "DISCARD — heat damage detected",
+  "confidence": "high|medium|low",
+  "cold_chain_note": "Brief note for ASHA worker",
+  "reasoning": "1-2 sentences describing what you see"
+}}
+
+{LANG_INSTR.get(language, LANG_INSTR["en"])}
+Do not add any text outside the JSON object."""
+
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    model    = os.getenv("OLLAMA_MODEL", "gemma3:4b")
+
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "images": [image_base64],
+        "stream": False,
+        "options": {"temperature": 0.05, "num_predict": 300},
+    }
+
+    try:
+        async with _httpx.AsyncClient(timeout=40.0) as client:
+            r = await client.post(f"{base_url}/api/generate", json=payload)
+            r.raise_for_status()
+            raw = r.json().get("response", "").strip()
+
+        json_match = _re.search(r'\{.*\}', raw, _re.DOTALL)
+        if json_match:
+            parsed = _json.loads(json_match.group())
+        else:
+            parsed = {
+                "vvm_stage": None,
+                "usable": None,
+                "inner_square": "unknown",
+                "action": "Cannot read VVM — show to PHC cold chain officer",
+                "confidence": "low",
+                "cold_chain_note": "Take a clearer photo in good lighting with the VVM circle visible.",
+                "reasoning": raw[:200] if raw else "Could not analyze VVM.",
+            }
+
+        parsed["inference_seconds"] = round(_time.monotonic() - t0, 2)
+        return parsed
+
+    except Exception as exc:
+        logger.error(f"VVM reader error: {exc}")
+        raise HTTPException(status_code=503, detail="Gemma 4 vision unavailable. Ensure Ollama is running.")
+
+
+@app.post("/translate")
+async def translate_text(request: dict):
+    """
+    Gemma 4 medical translation between English and Indian languages.
+    Used for Doctor ↔ Patient real-time translation mode.
+    """
+    import time as _time
+    from langchain_core.messages import SystemMessage, HumanMessage
+    t0 = _time.monotonic()
+
+    text      = request.get("text", "").strip()
+    from_lang = request.get("from_lang", "en")
+    to_lang   = request.get("to_lang", "te")
+    mode      = request.get("mode", "doctor_to_patient")  # or patient_to_doctor
+
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    LANG_NAMES = {
+        "en": "English",
+        "te": "Telugu (తెలుగు)",
+        "hi": "Hindi (हिंदी)",
+        "ta": "Tamil (தமிழ்)",
+    }
+
+    from_name = LANG_NAMES.get(from_lang, "English")
+    to_name   = LANG_NAMES.get(to_lang, "Telugu")
+
+    if mode == "doctor_to_patient":
+        system = f"""You are a medical interpreter specializing in translating doctor's instructions to patients in rural India.
+Translate the following medical text from {from_name} to {to_name}.
+Rules:
+1. Use simple, everyday vocabulary that a patient with no medical education can understand
+2. Keep the medical meaning accurate — do not simplify to the point of losing clinical meaning
+3. Translate completely — do not leave any part in the original language
+4. Output ONLY the translated text, nothing else. No explanation, no labels."""
+    else:
+        system = f"""You are a medical interpreter translating a rural patient's description of symptoms to a doctor.
+Translate the following from {from_name} to {to_name}.
+Rules:
+1. Preserve all symptom details accurately
+2. If the patient uses colloquial terms for body parts or symptoms, translate to correct medical English
+3. Output ONLY the translated text, nothing else. No explanation, no labels."""
+
+    llm = get_llm(temperature=0.1, num_predict=512)
+    messages = [SystemMessage(content=system), HumanMessage(content=text)]
+
+    try:
+        response = llm.invoke(messages)
+        translated = response.content.strip()
+        return {
+            "original": text,
+            "translated": translated,
+            "from_lang": from_lang,
+            "to_lang": to_lang,
+            "mode": mode,
+            "inference_seconds": round(_time.monotonic() - t0, 2),
+        }
+    except Exception as e:
+        logger.error(f"Translation error: {e}")
+        raise HTTPException(status_code=503, detail="AI model unavailable. Ensure Ollama is running.")
+
+
+@app.post("/pregnancy-tracker")
+async def pregnancy_tracker(request: dict):
+    """
+    JSSK-aligned pregnancy tracker.
+    Returns ANC schedule, JSSK entitlements, warning signs, and IFA dosing.
+    """
+    import time as _time, datetime as _dt, re as _re, json as _json
+    from langchain_core.messages import SystemMessage, HumanMessage
+    t0 = _time.monotonic()
+
+    language = request.get("language", "en")
+    lmp_str  = request.get("lmp_date", "")   # "YYYY-MM-DD"
+    age      = request.get("age", "")
+    gravida  = request.get("gravida", 1)      # total pregnancies
+    para     = request.get("para", 0)         # previous deliveries
+
+    # Calculate gestational age
+    weeks_pregnant = None
+    edd_str = None
+    trimester = None
+    try:
+        lmp = _dt.date.fromisoformat(lmp_str)
+        today = _dt.date.today()
+        days_pregnant = (today - lmp).days
+        weeks_pregnant = days_pregnant // 7
+        edd = lmp + _dt.timedelta(days=280)
+        edd_str = f"{edd.day} {edd.strftime('%B %Y')}" if hasattr(edd, 'strftime') else str(edd)
+        if weeks_pregnant <= 12:
+            trimester = "First trimester (0–12 weeks)"
+        elif weeks_pregnant <= 28:
+            trimester = "Second trimester (13–28 weeks)"
+        else:
+            trimester = "Third trimester (29–40 weeks)"
+    except Exception:
+        weeks_pregnant = None
+
+    # Build ANC visit schedule
+    ANC_VISITS = [
+        {"visit": "ANC-1", "timing": "Before 12 weeks", "weeks_target": 12,
+         "key_tasks": ["Register pregnancy at PHC/Sub-centre", "Blood tests: Hb, blood group, blood sugar, HIV, VDRL", "Urine protein + sugar", "Weight + BP", "Start IFA 1 tablet daily", "Folic acid 5mg daily", "TT-1 injection"]},
+        {"visit": "ANC-2", "timing": "14–26 weeks", "weeks_target": 26,
+         "key_tasks": ["BP + weight + fetal heart sounds", "Hb test", "Urine test", "TT-2 injection (4 weeks after TT-1)", "Ultrasound if not done", "IFA compliance check"]},
+        {"visit": "ANC-3", "timing": "28–34 weeks", "weeks_target": 34,
+         "key_tasks": ["BP + weight + fetal position", "Hb recheck", "Urine protein", "Calcium 500mg twice daily", "Danger signs counselling", "Birth preparedness plan"]},
+        {"visit": "ANC-4", "timing": "36 weeks onward", "weeks_target": 40,
+         "key_tasks": ["Fetal presentation check", "BP monitoring", "JSSK delivery plan — facility birth", "Register for 102 ambulance", "Postpartum care counselling"]},
+    ]
+
+    # Calculate which ANC visits are overdue
+    overdue_anc = []
+    upcoming_anc = []
+    if weeks_pregnant is not None:
+        for v in ANC_VISITS:
+            if weeks_pregnant >= v["weeks_target"]:
+                overdue_anc.append(v)
+            else:
+                upcoming_anc.append(v)
+
+    JSSK_ENTITLEMENTS = [
+        "Free ANC checkups at Government health facility",
+        "Free institutional delivery (Normal and C-Section)",
+        "Free drugs and consumables during delivery",
+        "Free diet during stay (3 days normal, 7 days C-Section)",
+        "Free blood if required",
+        "Free transport via 102 ambulance (call 102)",
+        "Free post-natal care for mother and newborn",
+        "Janani Suraksha Yojana (JSY) cash incentive after delivery",
+        "Newborn care and immunization at facility",
+    ]
+
+    WARNING_SIGNS = [
+        "Severe headache or blurred vision → EMERGENCY — Call 108",
+        "Swelling of face, hands, or feet → Go to PHC today",
+        "Vaginal bleeding at any time → EMERGENCY — Call 102",
+        "Fever > 100°F → PHC same day",
+        "Reduced or absent fetal movements (after 28 weeks) → PHC immediately",
+        "Severe abdominal pain → EMERGENCY — Call 102",
+        "Fitting/convulsions → EMERGENCY — Call 108 (eclampsia)",
+        "Difficulty breathing → EMERGENCY",
+    ]
+
+    IFA_SCHEDULE = {
+        "dose": "1 IFA tablet (100mg iron + 0.5mg folic acid)",
+        "frequency": "Once daily at night with food",
+        "duration": "180 days minimum during pregnancy + 180 days postpartum",
+        "tip": "Take at night to reduce nausea. Eat citrus fruit or amla to boost iron absorption. Stools will turn dark — this is normal.",
+    }
+
+    summary = (
+        f"Pregnancy assessment for G{gravida}P{para} woman, age {age}.\n"
+        f"{'LMP: ' + lmp_str + f' — {weeks_pregnant} weeks pregnant, {trimester}. EDD: {edd_str}' if weeks_pregnant is not None else 'LMP not provided.'}\n"
+        f"Overdue ANC visits: {len(overdue_anc)}. Upcoming: {len(upcoming_anc)}."
+    )
+
+    return {
+        "weeks_pregnant": weeks_pregnant,
+        "trimester": trimester,
+        "edd": edd_str,
+        "anc_overdue": overdue_anc,
+        "anc_upcoming": upcoming_anc[:2],
+        "jssk_entitlements": JSSK_ENTITLEMENTS,
+        "warning_signs": WARNING_SIGNS,
+        "ifa_schedule": IFA_SCHEDULE,
+        "gravida": gravida,
+        "para": para,
+        "summary": summary,
+        "inference_seconds": round(_time.monotonic() - t0, 3),
+    }
+
+
+@app.get("/health-bulletin")
+async def health_bulletin(language: str = "en"):
+    """
+    Daily health bulletin — date-seeded tip from Gemma 4 relevant to rural India.
+    Changes each day. Covers seasonal, maternal, child, and preventive health.
+    """
+    import time as _time, datetime as _dt
+    from langchain_core.messages import SystemMessage, HumanMessage
+    t0 = _time.monotonic()
+
+    today = _dt.date.today()
+    month = today.month
+    day_of_year = today.timetuple().tm_yday
+
+    LANG_NAMES = {
+        "en": "English",
+        "te": "Telugu (తెలుగు)",
+        "hi": "Hindi (हिंदी)",
+        "ta": "Tamil (தமிழ்)",
+    }
+
+    SEASONAL_TOPICS = {
+        (12, 1, 2): "cold weather health — hypothermia prevention in infants, keeping newborns warm, mustard oil massage",
+        (3, 4, 5): "summer heat health — heat stroke prevention, ORS, keeping children hydrated, hand-washing",
+        (6, 7, 8, 9): "monsoon health — malaria prevention, water purification, dengue awareness, diarrhoea in children",
+        (10, 11): "post-monsoon — mosquito control, typhoid prevention, vitamin A supplementation",
+    }
+
+    current_season_topics = "general rural health"
+    for months, topic in SEASONAL_TOPICS.items():
+        if month in months:
+            current_season_topics = topic
+            break
+
+    TOPIC_ROTATION = [
+        "handwashing with soap — when and how, preventing diarrhoea deaths in children",
+        "exclusive breastfeeding for 6 months — benefits, positioning, problems",
+        "malaria prevention — mosquito nets, repellent, early fever reporting",
+        "TB awareness — 2-week cough, NIKSHAY free treatment",
+        "maternal nutrition — iron-rich foods, IFA tablets, importance of institutional delivery",
+        "ORS preparation — the correct 1 litre water + 6 teaspoon sugar + 1 teaspoon salt recipe",
+        "child growth monitoring — weight-for-age, MUAC screening, SAM/MAM",
+        "immunization — UIP schedule, why it matters, addressing vaccine hesitancy",
+        "snakebite first aid — immobilize, no tourniquet, go to government hospital",
+        "clean cooking — reducing smoke in kitchen, LPG PMUY, eye and lung disease prevention",
+        "menstrual health — hygiene, pain, anaemia in adolescent girls",
+        "safe delivery — danger signs, 102 ambulance, JSSK free delivery",
+        "diabetes and hypertension — symptoms, free testing at NPHCE, lifestyle",
+        "eye health — trachoma, childhood blindness, free surgery schemes",
+        "mental health — depression, anxiety, NIMHANS helpline 080-46110007",
+        "water purification — boiling, chlorine tablets, ORS for diarrhoea",
+    ]
+
+    topic_index = day_of_year % len(TOPIC_ROTATION)
+    todays_topic = TOPIC_ROTATION[topic_index]
+    lang_name = LANG_NAMES.get(language, "English")
+
+    system = f"""You are a rural health educator creating a daily health tip for ASHA workers and patients in India.
+Today's topic: {todays_topic}
+Season context: {current_season_topics}
+
+Create a health bulletin with:
+1. A clear, actionable title (under 10 words)
+2. Three practical bullet points (1-2 sentences each) that a villager can act on today
+3. One "Did you know?" fact specific to rural India
+
+Write entirely in {lang_name}. Use simple language. Be warm and encouraging, not preachy.
+Format as valid JSON only:
+{{
+  "title": "Bulletin title",
+  "date": "{today.day} {today.strftime('%B %Y')}",
+  "topic": "{todays_topic[:50]}",
+  "tips": ["Tip 1", "Tip 2", "Tip 3"],
+  "did_you_know": "Interesting fact"
+}}"""
+
+    llm = get_llm(temperature=0.7, num_predict=400)
+    messages = [SystemMessage(content=system), HumanMessage(content="Generate today's health bulletin.")]
+
+    import re as _re, json as _json
+    try:
+        response = llm.invoke(messages)
+        raw = response.content.strip()
+        json_match = _re.search(r'\{.*\}', raw, _re.DOTALL)
+        if json_match:
+            parsed = _json.loads(json_match.group())
+        else:
+            parsed = {
+                "title": "Daily Health Tip",
+                "date": f"{today.day} {today.strftime('%B %Y')}",
+                "topic": todays_topic[:50],
+                "tips": [raw[:300] if raw else "Stay hydrated. Wash hands before meals. Give children ORS for diarrhoea."],
+                "did_you_know": "India provides free treatment for TB through NIKSHAY. If you cough for 2+ weeks, visit your nearest PHC.",
+            }
+        parsed["inference_seconds"] = round(_time.monotonic() - t0, 2)
+        parsed["language"] = language
+        return parsed
+    except Exception as e:
+        logger.error(f"Health bulletin error: {e}")
+        return {
+            "title": "Daily Health Tip",
+            "date": f"{today.day} {today.strftime('%B %Y')}",
+            "topic": todays_topic[:50],
+            "tips": [
+                "Wash hands with soap before eating and after using the toilet.",
+                "Give children ORS immediately when diarrhoea starts — do not wait.",
+                "If fever lasts more than 3 days, visit the PHC — do not self-medicate.",
+            ],
+            "did_you_know": "India provides free malaria testing at all PHCs. Early treatment prevents severe disease.",
+            "inference_seconds": round(_time.monotonic() - t0, 2),
+            "language": language,
+        }
 
 
 if __name__ == "__main__":
